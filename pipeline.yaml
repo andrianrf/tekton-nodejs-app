@@ -1,0 +1,55 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: nodejs-pipeline
+spec:
+  params:
+    - name: IMAGE
+      description: Image description
+      type: string
+      default: "docker.io/mercybassey/node-app"
+    - name: TAG
+      description: Preferred tag
+      default: latest
+  workspaces:
+    - name: node-workspace
+  tasks:
+    - name: fetch-repository
+      taskRef:
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: node-workspace
+      params:
+        - name: url
+          value: https://gitlab.com/mercybassey683/tekton-nodejs-app
+        - name: subdirectory
+          value: ""
+        - name: deleteExisting
+          value: "true"
+    - name: build-push-image
+      taskRef:
+        name: buildah
+      runAfter:
+        - fetch-repository
+      workspaces:
+        - name: source
+          workspace: node-workspace
+      params:
+        - name: IMAGE
+          value: "$(params.IMAGE):$(params.TAG)"
+        - name: CONTEXT
+          value: "src"
+        - name: FORMAT
+          value: "docker"
+    - name: create-deployment
+      taskRef:
+        name: kubernetes-actions
+      runAfter:
+        - build-push-image
+      params:
+        - name: script
+          value: |
+            kubectl apply -f https://gitlab.com/mercybassey683/tekton-nodejs-app/-/blob/main/deployment.yaml
+        - name: manifest-dir
+          workspace: node-workspace
